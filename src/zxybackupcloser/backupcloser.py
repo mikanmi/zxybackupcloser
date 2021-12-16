@@ -35,7 +35,7 @@ import tempfile
 import logging
 
 from zxybackupcloser.commandoption import CommandOption
-from zxybackupcloser.printLogger import PrintLogger
+from zxybackupcloser.printlogger import PrintLogger
 
 
 ######################
