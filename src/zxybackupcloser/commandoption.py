@@ -16,7 +16,7 @@ class CommandOption:
 
         # add command options to the argument parser.
         parser = argparse.ArgumentParser(
-            description="The ZxyBackupCloser is to back up some ZFS pools to another ZFS pool or dataset."
+            description="ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset."
         )
         parser.add_argument("-b", "--backup", required=True, help="specify the name of the pool or dataset to store the original pools.")
         parser.add_argument("-v", "--verbose", action="store_true", help="run with verbose mode.")

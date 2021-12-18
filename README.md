@@ -1,6 +1,6 @@
 # ZxyBackupCloser
 
-ZxyBackupCloser software is to back up some ZFS pools to another ZFS pool or dataset.
+ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
 
 Patineboot is backing up all the ZFS pools on internal SSDs to an external SSD with ZxyBackupCloser every time.
 
@@ -71,9 +71,9 @@ See more detail of usage, run the `zxybackupcloser` command with the `-h` option
 ```bash
 $ zxybackupcloser -h
 
-usage: backupcloser.py [-h] -b BACKUP [-v] [-n] [-u] pool [pool ...]
+usage: zxybackupcloser [-h] -b BACKUP [-v] [-n] [-u] pool [pool ...]
 
-The ZxyBackupCloser is to back up some ZFS pools to another ZFS pool or dataset.
+ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
 
 positional arguments:
   pool                  specify one or more names of the original ZFS pools.
@@ -89,8 +89,8 @@ optional arguments:
 
 ### Advanced Configure
 
-I prepared the Macros on the _backupcloser.py_ script file for advanced configuration.
-Change the Macros for taking the snapshots and logging while backing up.
+I prepared the macros for advanced configuration on the _backupcloser.py_ script file.
+Change the macros for taking the snapshots and logging while backing up.
 
 Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxybackupcloser`.
 
@@ -110,7 +110,7 @@ Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxy
 
    ```bash
    cd ./zxybackupcloser/src/zxybackupcloser
-   sudo ./backupcloser.py
+   sudo ./backupcloser.py -h
    ```
 
 ## Environment
