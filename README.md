@@ -56,12 +56,12 @@ e.g., we back up two of the original pools named _root-pool_ and _storage-pool_ 
 sudo zxybackupcloser -b backup-pool root-pool storage-pool
 ```
 
-Note: remove the com.sun:auto-snapshot property of the original pools, or you will take snapshots to disturb.
+Note: Remove the com.sun:auto-snapshot property of the original pools, or you will take snapshots on the backup pool to disturb the backup pool.
 
 Remove the com.sun:auto-snapshot property:
 
 ```bash
-sudo zfs inherit com.sun:auto-snapshot <pool name>'
+sudo zfs inherit com.sun:auto-snapshot <pool name>
 ```
 
 ### Optional Usage
@@ -115,13 +115,13 @@ Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxy
 
 ## Environment
 
-ZxyBackupCloser is running on the following but not limited.
+Patineboot is running ZxyBackupCloser with the following software environment.
+Patineboot thinks ZxyBackupCloser can run with other software or versions.
 
 OS: Ubuntu Server 21.04
 
 - Python 3.9.5
 - ZFS on Linux 2.0.2
-- GNU bash, version 5.1.4
 - pv 1.6.6
 - zfs-auto-snapshot 1.2.4
 

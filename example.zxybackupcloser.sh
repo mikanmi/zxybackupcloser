@@ -12,7 +12,7 @@ echo
 zpool import backup-pool
 
 # back up the original pools
-zxybackupcloser -b backup-pool root-pool storage-pool
+zxybackupcloser -v -b backup-pool root-pool storage-pool
 
 # verifiy storage-pool only.
 echo $passphrase | zfs mount -l backup-pool/storage-pool/multimedia
