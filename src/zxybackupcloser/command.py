@@ -119,11 +119,11 @@ class Command:
 
         LOGGER.debug(f"END")
 
-    def __print_command(self, shift):
-        LOGGER.info(f"CMD:{shift}{self.__commandline}")
+    def __print_command(self, tag, shift):
+        LOGGER.info(f"{tag}:{shift}{self.__commandline}")
         shift = shift.replace("+", " ") + " + "
         for subcommand in self.__subcommands:
-            subcommand.__print_command(shift)
+            subcommand.__print_command(tag, shift)
 
     def execute(self, stdout_callback=None, stderr_callback=None, stdin_input=None, always=False):
         """Run the command with bloking call.
@@ -138,8 +138,11 @@ class Command:
         """
         LOGGER.debug(f"STR: {stdout_callback}, {stderr_callback}, {stdin_input}, {always}")
 
+        dryrun = self.__dryrun and not always
+
+        tag = "PRT" if dryrun else "CMD"
         shift = " "
-        self.__print_command(shift)
+        self.__print_command(tag, shift)
 
         if self.__dryrun and not always:
             return "Under Dryrun."

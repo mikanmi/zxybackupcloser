@@ -11,6 +11,7 @@ You can back up your ZFS pools with one command, only ZxyBackupCloser.
 - ZxyBackupCloser backs up some ZFS pools involving all of the snapshots.
 - ZxyBackupCloser supports incremental backup from the previous backup.
 - ZxyBackupCloser verifies the backup with the portable mac from the backup and the original ZFS pool.
+- ZxyBackupCloser gets the difference from the previous backup to the present backup.
 
 ## Install ZxyBackupCloser (Recommend)
 
@@ -56,7 +57,9 @@ e.g., we back up two of the original pools named _root-pool_ and _storage-pool_ 
 sudo zxybackupcloser -b backup-pool root-pool storage-pool
 ```
 
-Note: Remove the com.sun:auto-snapshot property of the original pools, or you will take snapshots on the backup pool to disturb the backup pool.
+_Note_: Reboot the machine if a pool on the ZFS filesystem does not unmount. ZxyBackupCloser unmounts the backup pool on its own backup process.
+
+_Note_: Remove the com.sun:auto-snapshot property of the original pools, or you will take snapshots on the backup pool to disturb the backup pool.
 
 Remove the com.sun:auto-snapshot property:
 
@@ -71,7 +74,7 @@ See more detail of usage, run the `zxybackupcloser` command with the `-h` option
 ```bash
 $ zxybackupcloser -h
 
-usage: zxybackupcloser [-h] -b BACKUP [-v] [-n] [-p] [-u] pool [pool ...]
+usage: zxybackupcloser [-h] -b BACKUP [-d] [-v] [-n] [-u] pool [pool ...]
 
 ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
 
@@ -82,9 +85,9 @@ optional arguments:
   -h, --help            show this help message and exit
   -b BACKUP, --backup BACKUP
                         specify the name of the pool or dataset to store the original pools.
+  -d, --diff            get the difference of the backups from previous to present.
   -v, --verbose         run with verbose mode.
   -n, --dry-run         run with no changes made.
-  -p, --passphrase      load encryption dataset with passphrase for diff.
   -u, --user            run on your normal user account.
 ```
 

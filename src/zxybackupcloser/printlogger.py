@@ -79,6 +79,10 @@ class PrintLogger(logging.getLoggerClass()):
     def set_verbose(self):
         self.__stdout_handler.setLevel(logging.INFO)
 
+    def set_simple(self):
+        formatter = logging.Formatter("%(message)s")
+        self.__stdout_handler.setFormatter(formatter)
+
     def notice(self, message):
         """Notice a message to a user.
         Args:
