@@ -32,7 +32,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 
-LOGGER_LOG_LEVEL: Final[int] = logging.DEBUG
+LOGGER_LOG_LEVEL: Final[int] = logging.INFO
 
 
 class PrintLogger(logging.getLoggerClass()):

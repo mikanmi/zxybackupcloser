@@ -21,6 +21,7 @@ class CommandOption:
         parser.add_argument("-b", "--backup", required=True, help="specify the name of the pool or dataset to store the original pools.")
         parser.add_argument("-v", "--verbose", action="store_true", help="run with verbose mode.")
         parser.add_argument("-n", "--dry-run", dest='dry_run', action="store_true", help="run with no changes made.")
+        parser.add_argument("-p", "--passphrase", action="store_true", help="load encryption dataset with passphrase for diff.")
         parser.add_argument("-u", "--user", action="store_true", help="run on your normal user account.")
         parser.add_argument("pool", nargs="+", help="specify one or more names of the original ZFS pools.")
 
@@ -41,6 +42,12 @@ class CommandOption:
     def get_dryrun(self):
         LOGGER.debug(f"STR")
         dryrun = self.__options.dry_run
+        LOGGER.debug(f"END {dryrun}")
+        return dryrun
+
+    def get_passphrase(self):
+        LOGGER.debug(f"STR")
+        dryrun = self.__options.passphrase
         LOGGER.debug(f"END {dryrun}")
         return dryrun
 

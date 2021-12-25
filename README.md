@@ -32,7 +32,7 @@ You can back up your ZFS pools with one command, only ZxyBackupCloser.
    apt install pv zfs-auto-snapshot
    ```
 
-Reference:
+Get more information:
 
 - [Pipe Viewer](https://www.ivarch.com/programs/pv.shtml)
 - [zfs-auto-snapshot](https://github.com/zfsonlinux/zfs-auto-snapshot)
@@ -71,7 +71,7 @@ See more detail of usage, run the `zxybackupcloser` command with the `-h` option
 ```bash
 $ zxybackupcloser -h
 
-usage: zxybackupcloser [-h] -b BACKUP [-v] [-n] [-u] pool [pool ...]
+usage: zxybackupcloser [-h] -b BACKUP [-v] [-n] [-p] [-u] pool [pool ...]
 
 ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
 
@@ -84,6 +84,7 @@ optional arguments:
                         specify the name of the pool or dataset to store the original pools.
   -v, --verbose         run with verbose mode.
   -n, --dry-run         run with no changes made.
+  -p, --passphrase      load encryption dataset with passphrase for diff.
   -u, --user            run on your normal user account.
 ```
 

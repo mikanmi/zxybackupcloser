@@ -29,8 +29,10 @@
 from typing import ClassVar, Final
 
 import os
+import io
 import re
 import logging
+import getpass
 
 from zxybackupcloser.command import Command
 from zxybackupcloser.commandoption import CommandOption
@@ -50,10 +52,15 @@ LOGGER_LOG_FILENAME: Final[str] = "zxybackupcloser.log"
 ######################
 #    ZFS Commands    #
 ######################
+CMD_ZFS_LIST_SCRIPT: Final[str] = "zfs list -H"
 # Display the names of the ZFS pool and dataset on the system.
-CMD_ZFS_LIST: Final[str] = "zfs list -H -o name"
+CMD_ZFS_LIST_FILESYSTEM: Final[str] = CMD_ZFS_LIST_SCRIPT + " -o name -t filesystem"
+# Recursively display the names of any childlen of the ZFS pool and dataset on the system.
+CMD_ZFS_LIST_RECURSIVE: Final[str] = CMD_ZFS_LIST_SCRIPT + " -r -o name -t filesystem {pool}"
 # Display the names of the snapshots on the specified pool.
-CMD_ZFS_LIST_SNAPSHOT: Final[str] = CMD_ZFS_LIST + " -t snapshot {pool}"
+CMD_ZFS_LIST_SNAPSHOT: Final[str] = CMD_ZFS_LIST_SCRIPT + " -o name -t snapshot {pool}"
+# Display the names of the ZFS pool and dataset on the system.
+CMD_ZFS_LIST_ENCRYPTIONROOT: Final[str] = CMD_ZFS_LIST_SCRIPT + " -o encryptionroot,keystatus -t filesystem"
 
 # Create the dataset on a backup pool with an original pool name.
 CMD_ZFS_CREATE: Final[str] = "zfs create -p {pool}"
@@ -66,16 +73,24 @@ SEND_OPTION_INTERMIDIATE: Final[str] = "-I"
 SEND_OPTION_ESTIMATEDSIZE: Final[str] = "-vn"
 
 # The zfs receive command
-CMD_ZFS_RECV: Final[str] = "zfs recv -F -d {dataset}"
+CMD_ZFS_RECV: Final[str] = "zfs recv -F -d -x mountpoint {dataset}"
+
+# Display the difference between a snapshot and the later snapshot or present.
+CMD_ZFS_DIFF: Final[str] = "zfs diff {snapshot} {filesystem}"
+
+# Load the encryption key at the dataset.
+CMD_ZFS_LOADKEY: Final[str] = "zfs load-key {dataset}"
+
+# Mount all of the datasets on the ZFS filesystem.
+CMD_ZFS_MOUNT: Final[str] = "zfs mount -a"
+
 
 # The zstreamdump command
 CMD_ZSTREAMDUMP: Final[str] = "zstreamdump"
 
-# Display the difference between a snapshot and the later snapshot or present.
-CMD_ZFS_DIFF: Final[str] = "zfs diff {snapshot} {later}"
-
 # Set disable auto-snapshot which you take with zfs-auto-snapshot.
 CMD_DISABLE_AUTO_SNAPSHOT: Final[str] = "zfs set com.sun:auto-snapshot=false {pool}"
+
 
 ########################
 # Command Applications #
@@ -107,6 +122,10 @@ class Backup:
         # Make a dataset name to which you back up the pool.
         self.__destination = f"{backup_pool}/{pool}"
 
+        self.__earliest = ""
+        self.__latest = ""
+        self.__fullbackup = False
+
         LOGGER.debug(f"END")
 
     def prepare(self):
@@ -125,16 +144,28 @@ class Backup:
         pool_snap.take()
         dest_snap = Snapshot(self.__destination)
 
-        self.__earliest = pool_snap.earliest(dest_snap)
+        earliest = pool_snap.earliest(dest_snap)
         self.__latest = pool_snap.get_list()[0]
 
-        result = True
-        if self.__earliest == self.__latest:
+        # Notice backup pool is up to date
+        up_to_date = False
+        if earliest == self.__latest:
             LOGGER.notice(f"The backup of {self.__pool} up-to-date.")
             LOGGER.notice(f"The latest snapshot, {self.__latest}, exists on the backup.")
-            result = False
-        self.__pool_snapshot = pool_snap
+            up_to_date = True
 
+        # back up the earliest snapshot on the pool
+        # if the destination dataset and the pool all have different snapshots.
+        if earliest is None:
+            snaps = pool_snap.get_list()
+            earliest = snaps[len(snaps) - 1]
+
+            self.__fullbackup = True
+
+        self.__earliest = earliest
+        earliest_label = earliest.split("@")[1]
+
+        result = (up_to_date, earliest_label)
         LOGGER.debug(f"END: {result}")
         return result
 
@@ -187,15 +218,9 @@ class Backup:
         """
         LOGGER.debug(f"STR")
 
-        # back up the earliest snapshot on the pool
-        # if the destination dataset and the pool all have different snapshots.
-        if self.__earliest is None:
-            snaps = self.__pool_snapshot.get_list()
-            size = len(snaps)
-            earliest = snaps[size - 1]
-
-            self.__send(earliest, "", self.__destination)
-            self.__earliest = earliest
+        # back up the earliest snapshot on the pool for full backcup
+        if self.__fullbackup:
+            self.__send(self.__earliest, "", self.__destination)
 
         # get the name of the latest snapshot on the pool.
         # send the snapshots from the earliest to the latest on the pool.
@@ -218,7 +243,12 @@ class Backup:
         backup_commandline = CMD_ZFS_SEND.format(
             options=i_option, earliest=earliest_snapshot, latest=latest_snapshot)
         backup_command = Command(backup_commandline)
-        backup_command.add_subcommand(Command(CMD_ZSTREAMDUMP))
+
+        pv_command = Command(CMD_PV)
+        pv_command.handle_stderr(False)
+        backup_command.add_subcommand(pv_command)
+
+        pv_command.add_subcommand(Command(CMD_ZSTREAMDUMP))
         backup_summary = backup_command.execute()
 
         # get MAC from the summaries
@@ -237,13 +267,13 @@ class Backup:
             str: A portable MAC
         """
         # LOGGER.debug(f"STR: {summary}")
-        LOGGER.debug(f"STR: long summary print actually.")
+        LOGGER.debug(f"STR: input summary.")
 
         line_pattern = r"\s*portable_mac = (0x[0-9a-f]{2} )+"
         mac = summary.splitlines()
         mac = [s for s in mac if re.match(line_pattern, s)]
 
-        LOGGER.debug(f"END: {mac}")
+        LOGGER.debug(f"END: return MAC.")
         return mac
 
     def get_checksums(self, summary):
@@ -252,20 +282,14 @@ class Backup:
             stream_dump: an output of the zstreamdump command.
         """
         # LOGGER.debug(f"STR: {summary}")
-        LOGGER.debug(f"STR: long summary print actually.")
+        LOGGER.debug(f"STR: input summary.")
 
         line_pattern = r"END checksum = [0-9a-f]+/[0-9a-f]+/[0-9a-f]+/[0-9a-f]+"
         checksums = summary.splitlines()
         checksums = [s for s in checksums if re.match(line_pattern, s)]
 
-        LOGGER.debug(f"END")
+        LOGGER.debug(f"END: return MAC.")
         return checksums
-
-    def diff(self):
-        """diff the backup between incremental and previous backup.
-        """
-        diff = Diff()
-        diff.diff(self.__earliest, self.__latest)
 
 
 class Snapshot:
@@ -348,7 +372,7 @@ class Snapshot:
             snapshots = self.__get_list(self.__pool)
             self.__snapshots = snapshots
 
-        LOGGER.debug(f"END: {self.__snapshots}")
+        LOGGER.debug(f"END: resturn snapshots")
         return self.__snapshots
 
     def earliest(self, snapshot) -> str:
@@ -378,31 +402,44 @@ class Snapshot:
         return earliest
 
 
-class Diff:
+class Difference:
     """Diff class on ZFS filesystem.
     Get the difference between a snapshot and the later snapshot.
     """
 
-    def __init__(self):
+    def __init__(self, pool, backup_pool):
         """Construct a Diff instance.
+        Args:
+            backup_pool: The name of the backup pool.
         """
-        LOGGER.debug(f"STR")
+        LOGGER.debug(f"STR: {pool}, {backup_pool}")
+
+        # Make a dataset name to which you back up the pool.
+        self.__destination = f"{backup_pool}/{pool}"
+
         LOGGER.debug(f"END")
 
-    def diff(self, snapshot, later_snapshot):
+    def diff(self, snapshot_name):
         """Get the difference between a snapshot and the later snapshot.
         Args:
             snapshot: The name of a snapshot.
             later_snapshot: The name of the later snapshot then the snapshot.
         """
-        LOGGER.debug(f"STR: {snapshot}, {later_snapshot}")
+        LOGGER.debug(f"STR: {snapshot_name}")
+
+        list_recursive_cl = CMD_ZFS_LIST_RECURSIVE.format(pool=self.__destination)
+        list_recursive_cmd = Command(list_recursive_cl)
+        lr_output = list_recursive_cmd.execute()
+        datasets = lr_output.strip().splitlines()
 
         def diff_log(output_line):
             LOGGER.info(output_line.rstrip(os.linesep))
 
-        commandline = CMD_ZFS_DIFF.format(snapshot=snapshot, later=later_snapshot)
-        command = Command(commandline)
-        command.execute(diff_log, diff_log)
+        for dataset in datasets:
+            snapshot = f"{dataset}@{snapshot_name}"
+            diff_cl = CMD_ZFS_DIFF.format(snapshot=snapshot, filesystem=dataset)
+            diff_cmd = Command(diff_cl)
+            diff_cmd.execute(diff_log, diff_log)
 
         LOGGER.debug(f"END")
 
@@ -431,20 +468,45 @@ class ZfsFilesystem:
         """
         LOGGER.debug(f"STR")
 
-        list_command = Command(CMD_ZFS_LIST)
+        list_command = Command(CMD_ZFS_LIST_FILESYSTEM)
         output = list_command.execute(always=True)
         self.__pools = output.strip().splitlines()
+
+        encryptionroot_command = Command(CMD_ZFS_LIST_ENCRYPTIONROOT)
+        output = encryptionroot_command.execute(always=True)
+        lines = output.strip().splitlines()
+        self.__encryptionroots = [line.split("\t")[0] for line in lines if not line.startswith("-")]
 
         LOGGER.debug(f"END")
 
     def exist(self, pool):
-        """Return True if the pool exists.
+        """Confirm a pool exists.
         Args:
             pool: The name of a ZFS pool.
+        Return:
+            bool: True if a pool exists.
         """
         LOGGER.debug(f"STR: {pool}")
 
         result = pool in self.__pools
+
+        LOGGER.debug(f"END: {result}")
+        return result
+
+    def has_encryptionroot(self, pool):
+        """Confirm a pool has a dataset set on encryptionroot.
+        Args:
+            pool: The name of a ZFS pool.
+        Return:
+            bool: True if a pool has a dataset set on encryptionroot.
+        """
+        LOGGER.debug(f"STR: {pool}")
+
+        result = False
+        for root in self.__encryptionroots:
+            if pool == root.split("/")[0]:
+                result = True
+                break
 
         LOGGER.debug(f"END: {result}")
         return result
@@ -463,6 +525,88 @@ class ZfsFilesystem:
 
         LOGGER.debug(f"END")
 
+    def prompt_passphrase(self):
+        """Ask for your passphrase.
+        """
+        LOGGER.debug(f"STR")
+
+        if comand_options.get_passphrase():
+            self.__passphrase = getpass.getpass(prompt="Enter Passphrase for ZFS dataset: ")
+
+        LOGGER.debug(f"END")
+
+    def load_encryptionkey(self, pool):
+        """Load encryptionkey at the value of the encryptionroot property.
+        """
+        LOGGER.debug(f"STR")
+
+        command = Command(CMD_ZFS_LIST_ENCRYPTIONROOT)
+        output = command.execute(always=True)
+        lines = output.strip().splitlines()
+        encryptionroots = [line.split("\t") for line in lines if not line.startswith("-")]
+
+        difference = [root[0] for root in encryptionroots
+                      if pool == root[0].split("/")[0] and root[1] != "available"]
+
+        for d in difference:
+            commandline = CMD_ZFS_LOADKEY.format(dataset=d)
+            command = Command(commandline)
+            keybin = self.__passphrase.encode()
+            ppstream = io.BytesIO(keybin)
+            command.execute(stdin_input=ppstream)
+
+        LOGGER.debug(f"END")
+
+    def mount(self):
+        """Mount all of the ZFS datasets.
+        """
+        LOGGER.debug(f"STR")
+
+        command = Command(CMD_ZFS_MOUNT)
+        command.execute()
+
+        LOGGER.debug(f"END")
+
+
+def backup_and_diff(pools, backup_pool):
+
+    LOGGER.debug(f"STR: {pools}, {backup_pool}")
+
+    zfilesystem = ZfsFilesystem.get_instance()
+
+    # disable auto-snapshot
+    zfilesystem.disable_auto_snapshot(backup_pool)
+
+    # snapshots
+    latest_with_pool = {}
+
+    # start the backup process
+    for pool in pools:
+        backup = Backup(pool, backup_pool)
+
+        up_to_date, latest_label = backup.prepare()
+        latest_with_pool[pool] = latest_label
+
+        # back up the next pool if the backup is up to date.
+        if up_to_date:
+            continue
+
+        backup.backup()
+        backup.verify()
+
+    # load the encryption key on the backup pool
+    zfilesystem.load_encryptionkey(backup_pool)
+
+    # mount the datasets on backup pool.
+    zfilesystem.mount()
+
+    # load diff backup pool.
+    for pool in pools:
+        difference = Difference(pool, backup_pool)
+        difference.diff(latest_with_pool[pool])
+
+    LOGGER.debug(f"END")
+
 
 def launch():
 
@@ -478,38 +622,35 @@ def launch():
         if comand_options.get_verbose():
             LOGGER.set_verbose()
 
-        if not is_root and not comand_options.get_user():
+        if not (is_root or comand_options.get_user()):
             LOGGER.error("Run this script with **sudo**.")
             return
 
         Command.initialize(LOGGER, comand_options.get_dryrun())
-
         zfilesystem = ZfsFilesystem.get_instance()
 
         # exit if the pools or the backup pool do not exist.
         pools = comand_options.get_pools()
         backup_pool = comand_options.get_backup()
 
+        has_encryptionroot = False
+
         zfs_pools = list(pools)
         zfs_pools.append(backup_pool)
         for pool in zfs_pools:
+
             if not zfilesystem.exist(pool):
                 LOGGER.error(f"{pool} is not exist.")
                 return
 
-        # disable auto-snapshot
-        zfilesystem.disable_auto_snapshot(backup_pool)
+            if zfilesystem.has_encryptionroot(pool):
+                has_encryptionroot = True
 
-        # start the backup process
-        for pool in pools:
-            backup = Backup(pool, backup_pool)
-            # back up the next pool if the backup is up to date.
-            if not backup.prepare():
-                continue
+        # ask for your passphrase with the user prompt.
+        if has_encryptionroot:
+            zfilesystem.prompt_passphrase()
 
-            backup.backup()
-            backup.verify()
-            backup.diff()
+        backup_and_diff(pools, backup_pool)
 
     except BaseException:
         print("An exception occurs")

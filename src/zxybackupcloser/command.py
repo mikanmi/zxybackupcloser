@@ -29,10 +29,11 @@
 from typing import Final
 
 import os
+import time
 import subprocess
 from threading import Thread
 
-READSIZE: Final[int] = 100 * 1024 * 1024
+READSIZE: Final[int] = 64 * 1024
 LOGGER = None
 
 
@@ -50,10 +51,14 @@ def multi_pipe(inputstream, outputstreams):
                 [o.close() for o in ostreams]
                 break
             readdata = readbuffer[0:size]
-            sizes = [o.write(readdata) for o in ostreams]
-            if size != min(sizes):
-                LOGGER.error(f"actual write size {sizes}, attempt write size {size}.")
-                raise IOError(f"actual write size {sizes}, attempt write size {size}.")
+            for o in ostreams:
+                wsize = o.write(readdata)
+                if size != wsize:
+                    LOGGER.error(f"actual write size {wsize}, attempt write size {size}.")
+                    raise IOError(f"actual write size {wsize}, attempt write size {size}.")
+
+            # for thread switching
+            time.sleep(0.0001)
 
     thread = Thread(target=run, args=(inputstream, outputstreams))
     thread.start()
@@ -157,7 +162,7 @@ class Command:
 
         # interrupt and handle standard io, e.g., log, pipe, etc
         if stdin_input is not None:
-            thread = line_pipe(stdin_input, pro.stdin.write)
+            thread = multi_pipe(stdin_input, [pro.stdin, ])
             thread.join()
             pro.stdin.close()
 
@@ -171,7 +176,7 @@ class Command:
                 process.check_returncode()
 
         wholestdout = f"".join(whole_stdout)
-        LOGGER.debug(f"END: omit stdard output to print.")
+        LOGGER.debug(f"END: omit standard output to print.")
         return wholestdout
 
     def __start(self, processes, threads, stdout_callback, stderr_callback):
@@ -185,6 +190,7 @@ class Command:
         split_cmd = self.__commandline.split()
         process = subprocess.Popen(
             split_cmd,
+            bufsize=READSIZE,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=perr)
         processes.append(process)
 
@@ -211,3 +217,7 @@ class Command:
 
     def handle_stderr(self, check):
         self.__handle_stderr = check
+
+
+if __name__ == "__main__":
+    print("CommandOption is an Import Module.")
