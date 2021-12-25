@@ -12,9 +12,10 @@ echo
 zpool import backup-pool
 
 # back up the original pools
-echo -n $passphrase | zxybackupcloser -vp -b backup-pool root-pool storage-pool
+echo -n $passphrase | zxybackupcloser -d -b backup-pool root-pool storage-pool
 
 # verifiy storage-pool only.
+echo $passphrase | zfs mount -l backup-pool/storage-pool/multimedia
 rsync -n -carv --delete /storage-pool/multimedia/ /backup-pool/storage-pool/multimedia
 
 zpool export backup-pool
