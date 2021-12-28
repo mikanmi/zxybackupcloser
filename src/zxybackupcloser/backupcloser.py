@@ -30,6 +30,7 @@ from typing import Final
 
 import os
 import re
+import enum
 import logging
 
 
@@ -37,6 +38,7 @@ from zxybackupcloser.command import Command
 from zxybackupcloser.commandoption import CommandOption
 from zxybackupcloser.printlogger import PrintLogger
 from zxybackupcloser.zfsfilesystem import ZfsFilesystem
+from zxybackupcloser.snapshot import Snapshot
 
 ######################
 # Advanced Configure #
@@ -54,8 +56,6 @@ LOGGER_LOG_FILENAME: Final[str] = "zxybackupcloser.log"
 CMD_ZFS_LIST_SCRIPT: Final[str] = "zfs list -H"
 # Recursively display the names of any childlen of the ZFS pool and dataset on the system.
 CMD_ZFS_LIST_RECURSIVE: Final[str] = CMD_ZFS_LIST_SCRIPT + " -r -o name -t filesystem {pool}"
-# Display the names of the snapshots on the specified pool.
-CMD_ZFS_LIST_SNAPSHOT: Final[str] = CMD_ZFS_LIST_SCRIPT + " -o name -t snapshot {pool}"
 
 # Create the dataset on a backup pool with an original pool name.
 CMD_ZFS_CREATE: Final[str] = "zfs create -p {pool}"
@@ -94,6 +94,20 @@ LOGGER: Final[PrintLogger] = logging.getLogger(__name__)
 comand_options = CommandOption(LOGGER)
 
 
+class BackupType(enum.Enum):
+    KEEP = 1
+    NORMAL = 2
+    ALL = 3
+
+
+class BackupParam:
+
+    def __init__(self, backup_type, earliest, latest):
+        self.backup_type = backup_type
+        self.earliest = earliest
+        self.latest = latest
+
+
 class Backup:
 
     def __init__(self, pool, backup_pool):
@@ -110,7 +124,7 @@ class Backup:
 
         self.__earliest = ""
         self.__latest = ""
-        self.__fullbackup = False
+        self.__backup_type = BackupType.ALL
 
         LOGGER.debug(f"END")
 
@@ -130,31 +144,34 @@ class Backup:
         pool_snap.take()
         dest_snap = Snapshot(self.__destination)
 
+        # common earliest of the pool and the backup pool.
         earliest = pool_snap.earliest(dest_snap)
-        self.__latest = pool_snap.get_list()[0]
+        latest = pool_snap.get_latest()
 
-        # Notice backup pool is up to date
-        up_to_date = False
-        if earliest == self.__latest:
-            LOGGER.notice(f"The backup of {self.__pool} up-to-date.")
-            LOGGER.notice(f"The latest snapshot, {self.__latest}, exists on the backup.")
-            up_to_date = True
+        # Decide BackupType
+        backup_type = BackupType.NORMAL
 
-        # back up the earliest snapshot on the pool
-        # if the destination dataset and the pool all have different snapshots.
-        if earliest is None:
-            snaps = pool_snap.get_list()
-            earliest = snaps[len(snaps) - 1]
+        # The backup pool is up to date.
+        if earliest == latest:
+            backup_type = BackupType.KEEP
 
-            self.__fullbackup = True
+        # Back up all snapshots on the pool,
+        # if the destination dataset and the pool do not have even one of the same snapshots.
+        elif earliest is None:
+            earliest = pool_snap.get_earliest()
+            backup_type = BackupType.ALL
 
+        self.__backup_type = backup_type
         self.__earliest = earliest
-        earliest_label = earliest.split("@")[1]
-        latest_label = self.__latest.split("@")[1]
+        self.__latest = latest
 
-        result = (up_to_date, earliest_label, latest_label)
-        LOGGER.debug(f"END: {result}")
-        return result
+        earliest_label = earliest.split("@")[1]
+        latest_label = latest.split("@")[1]
+
+        param = BackupParam(backup_type, earliest_label, latest_label)
+
+        LOGGER.debug(f"END: {param}")
+        return param
 
     def __send(self, earliest, latest, destination) -> str:
         """Send the ZFS pool and receive it on the destination.
@@ -205,13 +222,14 @@ class Backup:
         """
         LOGGER.debug(f"STR")
 
-        # back up the earliest snapshot on the pool for full backcup
-        if self.__fullbackup:
+        # back up the earliest snapshot on the pool for backcup all
+        if self.__backup_type == BackupType.ALL:
             self.__send(self.__earliest, "", self.__destination)
 
-        # get the name of the latest snapshot on the pool.
-        # send the snapshots from the earliest to the latest on the pool.
-        self.__summary = self.__send(self.__earliest, self.__latest, self.__destination)
+        # send the snapshots from the earliest to the latest on the pool,
+        # if the pool has multiple snapshots.
+        if self.__earliest != self.__latest:
+            self.__summary = self.__send(self.__earliest, self.__latest, self.__destination)
 
         LOGGER.debug(f"END")
 
@@ -221,6 +239,14 @@ class Backup:
             bool: True if verified, otherwise failed.
         """
         LOGGER.debug(f"STR")
+
+        succeeded = False
+
+        # if one-shot backup only, skip the verifying for incremental backup.
+        if self.__earliest == self.__latest:
+            succeeded = True
+            LOGGER.debug(f"END: {succeeded}")
+            return succeeded
 
         i_option = SEND_OPTION_INTERMIDIATE
         earliest_snapshot = self.__earliest.replace(self.__pool, self.__destination, 1)
@@ -279,116 +305,6 @@ class Backup:
         return checksums
 
 
-class Snapshot:
-    """Snapshot class on ZFS filesystem.
-    Snapshot only accept the existence ZFS pools.
-    """
-
-    def __init__(self, pool):
-        """Construct a snapshot instance with the ZFS pool name specified.
-        Args:
-            pool: The name of a ZFS pool.
-        """
-        LOGGER.debug(f"STR: {pool}")
-
-        self.__pool = pool
-        self.__is_dry = comand_options.get_dryrun()
-        self.__latest = ""
-        self.__snapshots = []
-
-        LOGGER.debug(f"END")
-
-    def take(self):
-        """Take a snapshot now.
-        """
-        LOGGER.debug(f"STR")
-
-        dry_option = "-n" if self.__is_dry else ""
-
-        snapshot_commandline = ZFS_AUTO_SNAPSHOT_SHORTEST.format(dryrun=dry_option, pool=self.__pool)
-        snapshot_command = Command(snapshot_commandline)
-        output = snapshot_command.execute(always=True)
-
-        if self.__is_dry:
-            # get the output if dryrun auto-snapshot
-            # the output: zfs snapshot -o com.sun:auto-snapshot-desc='-'  'pool1@zfs-auto-snap_hourly-2021-12-11-0557'
-            snapshot_name = output.split("'")[-2]
-            self.__latest = snapshot_name
-
-        # dispose the old snapshots
-        self.__snapshots = []
-
-        LOGGER.debug(f"END")
-
-    def __get_list(self, pool) -> list[str]:
-        """Get all of the snapshots on the pool sorted by time in reverse order.
-        Args:
-            pool: The name of a ZFS pool.
-        Returns:
-            list[str]: The list of the snapshot names on the pool sorted by time in reverse order.
-        """
-
-        output = ""
-        zfilesystem = ZfsFilesystem.get_instance()
-        if zfilesystem.exist(pool):
-            # get the list of snapshots on the pool if the pool exists, otherwise the empty list
-            list_snap_commandline = CMD_ZFS_LIST_SNAPSHOT.format(pool=pool)
-            list_snap_command = Command(list_snap_commandline)
-            output = list_snap_command.execute(always=True)
-
-        snapshots = output.strip().splitlines()
-        snapshots.sort(key=lambda s: re.search(r"\d{4}-\d{2}-\d{2}-\d{4}", s).group(), reverse=True)
-
-        # add the latest snapshot into the list on memory if under dry-run
-        if pool in comand_options.get_pools() and \
-                self.__is_dry and \
-                len(self.__latest) > 0:
-            snapshots.insert(0, self.__latest)
-            LOGGER.info(f"Add the {self.__latest} snapshot into the list on memory.")
-
-        return snapshots
-
-    def get_list(self) -> list[str]:
-        """Get all of the snapshots on the pool sorted by time in reverse order.
-        Returns:
-            list[str]: The list of the snapshot names on the pool sorted by time in reverse order.
-        """
-        LOGGER.debug(f"STR")
-
-        if not self.__snapshots:
-            snapshots = self.__get_list(self.__pool)
-            self.__snapshots = snapshots
-
-        LOGGER.debug(f"END: resturn snapshots")
-        return self.__snapshots
-
-    def earliest(self, snapshot) -> str:
-        """Find the earliest snapshot which both this and the specified instance contain.
-        Args:
-            snapshot: A snapshot instance.
-        Returns:
-            str: The earliest snapshot
-        """
-        LOGGER.debug(f"STR: {snapshot}")
-
-        # Find the start snapshot.
-        earliest = None
-
-        for bsnap in snapshot.get_list():
-            for osnap in self.get_list():
-                blabel = bsnap.split("@")[1]
-                olabel = osnap.split("@")[1]
-                if (blabel == olabel):
-                    earliest = osnap
-                    break
-            else:
-                continue
-            break
-
-        LOGGER.debug(f"END: {earliest}")
-        return earliest
-
-
 class Difference:
     """Diff class on ZFS filesystem.
     Get the difference between a snapshot and the later snapshot.
@@ -415,7 +331,7 @@ class Difference:
         LOGGER.debug(f"STR: {earliest_name}, {latest_name}")
 
         list_recursive_cmd = Command(CMD_ZFS_LIST_RECURSIVE.format(pool=self.__destination))
-        lr_output = list_recursive_cmd.execute()
+        lr_output = list_recursive_cmd.execute(always=True)
         datasets = lr_output.strip().splitlines()
 
         def stdio_handler(line):
@@ -423,8 +339,12 @@ class Difference:
 
         for dataset in datasets:
             earliest = f"{dataset}@{earliest_name}"
-            latest = f"{dataset}@{latest_name}"
-            diff_cmd = Command(CMD_ZFS_DIFF.format(snapshot=earliest, filesystem=latest))
+
+            snap = Snapshot(dataset)
+            if not snap.constain_snapshot(earliest):
+                earliest = snap.get_earliest()
+
+            diff_cmd = Command(CMD_ZFS_DIFF.format(snapshot=earliest, filesystem=dataset))
             diff_cmd.execute(stdout_callback=stdio_handler)
 
         LOGGER.debug(f"END")
@@ -442,22 +362,19 @@ def backup_and_diff(pools, backup_pool):
     # disable auto-snapshot
     zfilesystem.disable_auto_snapshot(backup_pool)
 
-    # snapshots
-    earliest_with_pool = {}
-    latest_with_pool = {}
-    up_to_date_pool = {}
+    param_pool = {}
 
     # start the backup process
     for pool in pools:
         backup = Backup(pool, backup_pool)
 
-        up_to_date, earliest_label, latest_label = backup.prepare()
-        earliest_with_pool[pool] = earliest_label
-        latest_with_pool[pool] = latest_label
-        up_to_date_pool[pool] = up_to_date
+        param = backup.prepare()
+        param_pool[pool] = param
 
         # back up the next pool if the backup is up to date.
-        if up_to_date:
+        if param.backup_type == BackupType.KEEP:
+            LOGGER.notice(f"The backup of {pool} up-to-date.")
+            LOGGER.notice(f"The latest snapshot, {param.latest}, exists on the backup.")
             continue
 
         backup.backup()
@@ -477,12 +394,15 @@ def backup_and_diff(pools, backup_pool):
 
         # load diff backup pool.
         for pool in pools:
-            # the backup is up to date.
-            if up_to_date_pool[pool]:
+
+            param: BackupParam = param_pool[pool]
+
+            # the backup is up to date or first backup
+            if param.backup_type == BackupType.KEEP:
                 continue
 
             difference = Difference(pool, backup_pool)
-            difference.diff(earliest_with_pool[pool], latest_with_pool[pool])
+            difference.diff(param.earliest, param.latest)
 
         # unmount the unmounted dataset at startup.
         zfilesystem.unmount_dataset(mountpoints)
@@ -508,8 +428,10 @@ def launch():
             LOGGER.error("Run this script with **sudo**.")
             return
 
-        Command.initialize(LOGGER, comand_options.get_dryrun())
+        dryrun = comand_options.get_dryrun()
+        Command.initialize(LOGGER, dryrun)
         ZfsFilesystem.initialize(LOGGER)
+        Snapshot.initialize(LOGGER, dryrun, ZFS_AUTO_SNAPSHOT_SHORTEST)
         zfilesystem = ZfsFilesystem.get_instance()
 
         # exit if the pools or the backup pool do not exist.
