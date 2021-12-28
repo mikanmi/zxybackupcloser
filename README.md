@@ -1,6 +1,6 @@
 # ZxyBackupCloser
 
-ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
+ZxyBackupCloser is a backup application to back up some ZFS pools containing many snapshots to another ZFS pool or dataset.
 
 Patineboot is backing up all the ZFS pools on internal SSDs to an external SSD with ZxyBackupCloser every time.
 
