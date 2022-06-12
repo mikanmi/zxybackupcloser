@@ -122,10 +122,10 @@ Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxy
 Patineboot is running ZxyBackupCloser with the following software environment.
 Patineboot thinks ZxyBackupCloser can run with other software or versions.
 
-OS: Ubuntu Server 21.04
+OS: Ubuntu Server 22.04
 
-- Python 3.9.5
-- ZFS on Linux 2.0.2
+- Python 3.10.4
+- ZFS on Linux 2.1.2
 - pv 1.6.6
 - zfs-auto-snapshot 1.2.4
 
@@ -150,5 +150,13 @@ twine asks:
 User: patineboot
 Pass: <your passphrase>
 ```
+
+Update ZxyBackupCloser from PyPI.
+
+   Update `zxybackupcloser` with the `pip3` command.
+
+   ```bash
+   pip3 install -U zxybackupcloser
+   ```
 
 Reference: [Packaging Python Projects](https://packaging.python.org/tutorials/packaging-projects/)
