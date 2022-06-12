@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2021 Patineboot. All rights reserved.
+# Copyright (c) 2021, 2022 Patineboot. All rights reserved.
 # ZxyBackupCloser is licensed under BSD 2-Clause License.
 
 # BSD 2-Clause License
@@ -91,7 +91,7 @@ CMD_PV: Final[str] = "pv"
 logging.setLoggerClass(PrintLogger)
 LOGGER: Final[PrintLogger] = logging.getLogger(__name__)
 
-comand_options = CommandOption(LOGGER)
+command_options = CommandOption(LOGGER)
 
 
 class BackupType(enum.Enum):
@@ -307,12 +307,13 @@ class Backup:
 
 class Difference:
     """Diff class on ZFS filesystem.
-    Get the difference between a snapshot and the later snapshot.
+    Get the difference between a snapshot and present of the original pool.
     """
 
     def __init__(self, pool, backup_pool):
         """Construct a Diff instance.
         Args:
+            pool: The name of the original pool.
             backup_pool: The name of the backup pool.
         """
         LOGGER.debug(f"STR: {pool}, {backup_pool}")
@@ -322,13 +323,12 @@ class Difference:
 
         LOGGER.debug(f"END")
 
-    def diff(self, earliest_name, latest_name):
-        """Get the difference between a snapshot and the later snapshot.
+    def diff(self, snapshot_name):
+        """Get the difference between a snapshot and present of the original pool.
         Args:
-            earliest_name: The name of a snapshot.
-            latest_name: The name of the later snapshot then the snapshot.
+            snapshot_name: The name of a snapshot.
         """
-        LOGGER.debug(f"STR: {earliest_name}, {latest_name}")
+        LOGGER.debug(f"STR: {snapshot_name}")
 
         list_recursive_cmd = Command(CMD_ZFS_LIST_RECURSIVE.format(pool=self.__destination))
         lr_output = list_recursive_cmd.execute(always=True)
@@ -338,10 +338,10 @@ class Difference:
             LOGGER.notice(line.rstrip(os.linesep))
 
         for dataset in datasets:
-            earliest = f"{dataset}@{earliest_name}"
+            earliest = f"{dataset}@{snapshot_name}"
 
             snap = Snapshot(dataset)
-            if not snap.constain_snapshot(earliest):
+            if not snap.contain_snapshot(earliest):
                 earliest = snap.get_earliest()
 
             diff_cmd = Command(CMD_ZFS_DIFF.format(snapshot=earliest, filesystem=dataset))
@@ -356,10 +356,7 @@ def backup_and_diff(pools, backup_pool):
 
     zfilesystem = ZfsFilesystem.get_instance()
 
-    # unmount the backup pool.
-    # zfilesystem.unmount_pool(backup_pool)
-
-    # disable auto-snapshot
+    # disable auto-snapshot to backup_pool
     zfilesystem.disable_auto_snapshot(backup_pool)
 
     param_pool = {}
@@ -380,17 +377,19 @@ def backup_and_diff(pools, backup_pool):
         backup.backup()
         backup.verify()
 
-    if comand_options.get_diff():
+    if command_options.get_diff():
 
         # set simple mode on standard output.
-        if not comand_options.get_verbose():
+        if not command_options.get_verbose():
             LOGGER.set_simple()
 
+        # the `zfs diff` command succeed on **only mounted** zfs pool or dataset.
+
         # unmount the backup pool.
-        mountpoints = zfilesystem.unmount_pool(backup_pool)
+        # previous_mount_status = zfilesystem.unmount_pool(backup_pool)
 
         # mount the all datasets on the backup pool
-        zfilesystem.mount_pool(backup_pool)
+        previous_mount_status = zfilesystem.mount_pool(backup_pool)
 
         # load diff backup pool.
         for pool in pools:
@@ -402,10 +401,10 @@ def backup_and_diff(pools, backup_pool):
                 continue
 
             difference = Difference(pool, backup_pool)
-            difference.diff(param.earliest, param.latest)
+            difference.diff(param.earliest)
 
         # unmount the unmounted dataset at startup.
-        zfilesystem.unmount_dataset(mountpoints)
+        zfilesystem.unmount_dataset(previous_mount_status)
 
     LOGGER.debug(f"END")
 
@@ -421,22 +420,22 @@ def launch():
     LOGGER.debug("LOG START")
     try:
         # set verbose on the log mode.
-        if comand_options.get_verbose():
+        if command_options.get_verbose():
             LOGGER.set_verbose()
 
-        if not (is_root or comand_options.get_user()):
+        if not (is_root or command_options.get_user()):
             LOGGER.error("Run this script with **sudo**.")
             return
 
-        dryrun = comand_options.get_dryrun()
+        dryrun = command_options.get_dryrun()
         Command.initialize(LOGGER, dryrun)
         ZfsFilesystem.initialize(LOGGER)
         Snapshot.initialize(LOGGER, dryrun, ZFS_AUTO_SNAPSHOT_SHORTEST)
         zfilesystem = ZfsFilesystem.get_instance()
 
         # exit if the pools or the backup pool do not exist.
-        pools = comand_options.get_pools()
-        backup_pool = comand_options.get_backup()
+        pools = command_options.get_pools()
+        backup_pool = command_options.get_backup()
 
         zfs_pools = pools + [backup_pool, ]
         for pool in zfs_pools:
@@ -446,7 +445,7 @@ def launch():
                 return
 
         # ask for your passphrase with the user prompt.
-        if comand_options.get_diff() and zfilesystem.has_encryptionroot(pools):
+        if command_options.get_diff() and zfilesystem.has_encryptionroot(pools):
             zfilesystem.prompt_passphrase()
 
         backup_and_diff(pools, backup_pool)

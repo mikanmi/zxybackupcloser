@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2021 Patineboot. All rights reserved.
+# Copyright (c) 2021,2022 Patineboot. All rights reserved.
 # ZxyBackupCloser is licensed under BSD 2-Clause License.
 
 from typing import ClassVar, Final
@@ -115,85 +115,87 @@ class ZfsFilesystem:
         LOGGER.debug(f"END")
 
     def mount_pool(self, pool):
-        """Mount a pool with recursive datasets.
+        """Mount a pool and its datasets recursively.
         Args:
-            pool: The name of a ZFS pool.
+            pool: The name of the ZFS pool you mount.
         Return:
-            mountpoints: The snapshot of the mountpoints at the starting.
+            The previous mount statuses: The list of pools or datasets, encryption roots, mount statuses at the calling this function.
+            The result of `zfs list -r -o name,encryptionroot,mounted -t filesystem`.
         """
         LOGGER.debug(f"STR: {pool}")
 
         command = Command(CMD_ZFS_LIST_MOUNTED.format(pool=pool))
         output = command.execute(always=True)
-        mountpoints = [line.split("\t") for line in output.strip().splitlines()]
+        mount_statuses = [line.split("\t") for line in output.strip().splitlines()]
 
-        for mountpoint in mountpoints:
-            if mountpoint[2] == "yes":
+        for mount_status in mount_statuses:
+            if mount_status[2] == "yes":
                 continue
 
             ppstream = None
-            # send the passphrase to standard input if encryptionroot.
-            if mountpoint[1] != "-":
+            # send the passphrase to the standard input of the mount command if encryptionroot is enabled.
+            if mount_status[1] != "-":
                 keybin = self.__passphrase.encode()
                 ppstream = io.BytesIO(keybin)
 
-            dataset = mountpoint[0]
+            dataset = mount_status[0]
             command = Command(CMD_ZFS_MOUNT.format(dataset=dataset))
             command.execute(stdin_input=ppstream)
 
-        LOGGER.debug(f"END: {mountpoints}")
-        return mountpoints
+        LOGGER.debug(f"END: {mount_statuses}")
+        return mount_statuses
 
     def unmount_pool(self, pool):
-        """Unmount a pool with recursive datasets.
+        """Unmount a pool and its datasets recursively.
         Args:
-            pool: The name of a ZFS pool.
+            pool: The name of the ZFS pool you unmount.
         Return:
-            mountpoints: The snapshot of the mountpoints at the starting.
+            The previous mount statuses: The list of pools or datasets, encryption roots, mount statuses at the calling this function.
+            The result of `zfs list -r -o name,encryptionroot,mounted -t filesystem`.
         """
         LOGGER.debug(f"STR: {pool}")
 
         command = Command(CMD_ZFS_LIST_MOUNTED.format(pool=pool))
         output = command.execute(always=True)
-        mountpoints = [line.split("\t") for line in output.strip().splitlines()]
-        mountpoints.reverse()
+        mount_statues = [line.split("\t") for line in output.strip().splitlines()]
+        mount_statues.reverse()
 
-        for mountpoint in mountpoints:
-            if mountpoint[2] == "yes":
-                command = Command(CMD_ZFS_UNMOUNT.format(dataset=mountpoint[0]))
+        for mount_status in mount_statues:
+            if mount_status[2] == "yes":
+                command = Command(CMD_ZFS_UNMOUNT.format(dataset=mount_status[0]))
                 command.execute()
 
-        LOGGER.debug(f"END: {mountpoints}")
-        return mountpoints
+        LOGGER.debug(f"END: {mount_statues}")
+        return mount_statues
 
-    def unmount_dataset(self, mountpoints):
+    def unmount_dataset(self, mount_statuses):
         """Unmount datasets specified on mountpoints.
         Args:
-            mountpoints: The snapshot of the mountpoints at the starting.
+            mount_statuses: The next mount statuses.
         """
-        LOGGER.debug(f"STR: {mountpoints}")
+        LOGGER.debug(f"STR: {mount_statuses}")
 
-        for mountpoint in mountpoints:
-            if mountpoint[2] == "no":
-                command = Command(CMD_ZFS_UNMOUNT.format(dataset=mountpoint[0]))
+        for mount_status in mount_statuses:
+            if mount_status[2] == "no":
+                command = Command(CMD_ZFS_UNMOUNT.format(dataset=mount_status[0]))
                 command.execute()
 
         LOGGER.debug(f"END")
 
     def has_encryptionroot(self, pools):
-        """Confirm a pool has a dataset set on encryptionroot.
+        """Confirm a pool in pools has a dataset with the encryptionroot property enabled.
         Args:
-            pools: The name of some ZFS pools to confirm.
+            pools: The list of the name of ZFS pools to confirm.
         Return:
-            bool: True if a pool has a dataset set on encryptionroot.
+            bool: True if a pool has a dataset with the encryptionroot property enabled.
         """
         LOGGER.debug(f"STR: {pools}")
 
         command = Command(CMD_ZFS_LIST_MOUNTED.format(pool=" ".join(pools)))
         output = command.execute(always=True)
-        mountpoints = [line.split("\t") for line in output.strip().splitlines()]
+        mount_statuses = [line.split("\t") for line in output.strip().splitlines()]
 
-        encryptionroots = [mountpoint[1] for mountpoint in mountpoints if mountpoint[1] != "-"]
+        encryptionroots = [mount_status[1] for mount_status in mount_statuses if mount_status[1] != "-"]
         result = len(encryptionroots) > 0
 
         LOGGER.debug(f"END: {result}")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2021 Patineboot. All rights reserved.
+# Copyright (c) 2021, 2022 Patineboot. All rights reserved.
 # ZxyBackupCloser is licensed under BSD 2-Clause License.
 
 # BSD 2-Clause License
@@ -143,7 +143,7 @@ class Snapshot:
         LOGGER.debug(f"END: {earliest}")
         return earliest
 
-    def constain_snapshot(self, name):
+    def contain_snapshot(self, name):
         """Confirm this instance contains a name of the snapshot.
         Args:
             name: A name of snapshot.
