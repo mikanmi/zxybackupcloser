@@ -1,21 +1,26 @@
 # ZxyBackupCloser
 
-ZxyBackupCloser is an easy backup application to store your ZFS pools containing a lot of snapshots to another ZFS pool or dataset.
+_ZxyBackupCloser_ is an **easy backup application** to store your ZFS pools containing a lot of snapshots to another ZFS pool or dataset.
 
-Patineboot is backing up all Patineboot's ZFS pools on internal SSDs to an external SSD with **ZxyBackupCloser** every time.
+Patineboot is backing up all Patineboot's ZFS pools on internal SSDs to an external SSD with _ZxyBackupCloser_ every time.
 
 ## Feature
 
-You back up your ZFS pools with the one command, only ZxyBackupCloser.
+You back up your ZFS pools with the one command, only _ZxyBackupCloser_.
 
-- ZxyBackupCloser keeps all of the snapshots of your ZFS pools in the backup ZFS pools.
-- ZxyBackupCloser supports the incremental backup from the previous backup.
-- ZxyBackupCloser verifies the original and the backup ZFS pools with the portable mac.
-- ZxyBackupCloser gets the difference between the previous and the present backup ZFS pools.
+- _ZxyBackupCloser_ keeps all of the snapshots of your ZFS pools in the backup ZFS pools.
+- _ZxyBackupCloser_ supports the incremental backup from the previous backup.
+- _ZxyBackupCloser_ verifies the original and the backup ZFS pools with the portable mac.
+- _ZxyBackupCloser_ gets the difference between the previous and the present backup ZFS pools.
 
-## Install ZxyBackupCloser (Recommend)
+## Official Web Site
 
-1. Install ZxyBackupCloser from PyPI.
+Release _ZxyBackupCloser_ at <https://pypi.org/project/zxybackupcloser/>.
+Develop _ZxyBackupCloser_ at <https://github.com/patineboot/zxybackupcloser>.
+
+## Install _ZxyBackupCloser_ (Recommend)
+
+1. Install _ZxyBackupCloser_ from PyPI.
 
    Install `zxybackupcloser` with the `pip3` command.
 
@@ -35,6 +40,7 @@ You back up your ZFS pools with the one command, only ZxyBackupCloser.
 
 Get more information:
 
+- [_ZxybackupCloser_](https://github.com/patineboot/zxybackupcloser)
 - [Pipe Viewer](https://www.ivarch.com/programs/pv.shtml)
 - [zfs-auto-snapshot](https://github.com/zfsonlinux/zfs-auto-snapshot)
 
@@ -51,23 +57,21 @@ zxybackupcloser -b <backup pool> <original pools>
 - _\<original pools>_: specify the one or more names of the original ZFS pools.
 - _\<backup pool\>_: specify the name of the destination pool or dataset to store the original pools.
 
-e.g., we back up two of the original pools named _root-pool_ and _storage-pool_ to the _backup-pool_ pool.
+e.g., Patineboot backs up two of the original pools named _home.pool_ and _storage.pool_ to the _backup.pool_ pool.
 
 ```bash
-sudo zxybackupcloser -b backup-pool root-pool storage-pool
+sudo zxybackupcloser -b backup.pool home.pool storage.pool
 ```
 
-_Note_: Reboot the machine if a pool on the ZFS filesystem does not unmount. ZxyBackupCloser unmounts the backup pool on its own backup process.
-
-_Note_: Remove the com.sun:auto-snapshot property of the original pools, or you will take snapshots on the backup pool to disturb the backup pool.
+_Warn_: Remove the com.sun:auto-snapshot property on the backup pool, or taking snapshots disturb the backup process.
 
 Remove the com.sun:auto-snapshot property:
 
 ```bash
-sudo zfs inherit com.sun:auto-snapshot <pool name>
+sudo zfs set com.sun:auto-snapshot=false <backup pool>
 ```
 
-### Optional Usage
+### Advanced Usage
 
 See more detail of usage, run the `zxybackupcloser` command with the `-h` option.
 
@@ -76,7 +80,7 @@ $ zxybackupcloser -h
 
 usage: zxybackupcloser [-h] -b BACKUP [-d] [-v] [-n] [-u] pool [pool ...]
 
-ZxyBackupCloser is a backup application to back up some ZFS pools to another ZFS pool or dataset.
+_ZxyBackupCloser_ is a backup application to back up some ZFS pools to another ZFS pool or dataset.
 
 positional arguments:
   pool                  specify one or more names of the original ZFS pools.
@@ -91,18 +95,20 @@ optional arguments:
   -u, --user            run on your normal user account.
 ```
 
-### Advanced Configure
+### Helpful Tool
 
-I prepared the macros for advanced configuration on the _backupcloser.py_ script file.
-Change the macros for taking the snapshots and logging while backing up.
+Patineboot has two helpful tools in the _misc_ directory.
 
-Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxybackupcloser`.
+- _zfs-load-enckey.service_  
+   Load the encryption key and mount filesystems automatically on the booting of your machine.
+- *zxycloser_warapper.sh*  
+   Fulfill Patineboot's pools and verify the backup automatically.
 
-## Install and run ZxyBackupCloser from GitHub
+## Install and run _ZxyBackupCloser_ from GitHub
 
-1. Get ZxyBackupCloser from GitHub.com
+1. Get _ZxyBackupCloser_ from GitHub.com
 
-   Get ZxyBackupCloser with `git clone`:
+   Get _ZxyBackupCloser_ with `git clone`:
 
    ```bash
    git clone https://github.com/patineboot/zxybackupcloser.git
@@ -117,10 +123,17 @@ Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxy
    sudo ./backupcloser.py -h
    ```
 
+## Configure _ZxyBackupCloser_
+
+Patineboot prepared the macros for deep configuration on the _backupcloser.py_ script file.
+Change the macros for taking the snapshots and logging while backing up.
+
+Notice: you can find the place of the _backupcloser.py_ file with `pip3 show zxybackupcloser`.
+
 ## Environment
 
-Patineboot is running ZxyBackupCloser with the following software environment.
-Patineboot thinks ZxyBackupCloser can run with other software or versions.
+Patineboot is running _ZxyBackupCloser_ with the following software environment.
+_ZxyBackupCloser_ can run with other software or versions.
 
 OS: Ubuntu Server 22.04
 
@@ -129,15 +142,15 @@ OS: Ubuntu Server 22.04
 - pv 1.6.6
 - zfs-auto-snapshot 1.2.4
 
-## Deploy ZxyBackupCloser for development
+## Deploy _ZxyBackupCloser_ for Patineboot's development
 
-Run ZxyBackupCloser while developing:
+Run _ZxyBackupCloser_ while developing:
 
 ```bash
 sudo PYTHONPATH=../ ./backupcloser.py -b <backup pool> <original pools>
 ```
 
-Deploy ZxyBackupCloser on PyPI:
+Deploy _ZxyBackupCloser_ on PyPI:
 
 ```bash
 python3 -m build
@@ -151,7 +164,7 @@ User: patineboot
 Pass: <your passphrase>
 ```
 
-Update ZxyBackupCloser from PyPI.
+Update _ZxyBackupCloser_ from PyPI.
 
    Update `zxybackupcloser` with the `pip3` command.
 
