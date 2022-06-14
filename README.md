@@ -15,8 +15,9 @@ You back up your ZFS pools with the one command, only _ZxyBackupCloser_.
 
 ## Official Web Site
 
-Release _ZxyBackupCloser_ at <https://pypi.org/project/zxybackupcloser/>.
-Develop _ZxyBackupCloser_ at <https://github.com/patineboot/zxybackupcloser>.
+Official Release: <https://pypi.org/project/zxybackupcloser/>
+
+Official Development Site: <https://github.com/patineboot/zxybackupcloser>
 
 ## Install _ZxyBackupCloser_ (Recommend)
 
